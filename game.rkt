@@ -32,6 +32,8 @@
     (list (list (list-ref flat 2) (list-ref flat 5) (list-ref flat 8) (list-ref flat 3))
           (list (list-ref flat 0) (list-ref flat 5) (list-ref flat 10) (list-ref flat 7)))))
 
+
+
 (define-type Coord
   (cord [x : Number] [y : Number]))
 
@@ -127,8 +129,9 @@
                     (play-ai-turn new-board moves other-mark mark)
                     (play-turn new-board moves other-mark mark ai)))))))))
 
+
 (define (play-ai-turn board moves mark other-mark)
-  (let ([coord (gen-cord moves)])
+  (let ([coord (ai-move moves board mark other-mark)])
     (let ([moves (append moves (list coord))])
     (let ([new-board (mark-board board coord mark)])
       (if (check-win new-board mark)
@@ -153,9 +156,53 @@
                 (draw-board new-board)
                 (play-turn new-board moves other-mark mark #t))))))))
 
-;TODO: implement proper logic
-(define (gen-cord moves) : Coord
-  (cord 2 2))
+(define (ai-move moves board mark other-mark) : Coord
+  (let ([bestVal (move (cord -1 -1) -1000)])
+      (move-coord (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (if (char=? (list-ref (list-ref board i) j) #\.)
+                                                                 (let ([new-board (mark-board board (cord i j) mark)])
+                                                                   (move-max bstVal (move (cord i j) (minimax new-board 0 #f mark other-mark))))
+                                                                 bstVal)) bestValue (list 0 1 2))) bestVal (list 0 1 2)))))
+
+  
+
+(define-type Move
+  (move [coord : Coord] [score : Number]))
+
+(define (move-max [move1 : Move] [move2 : Move]) : Move
+  (if (> (move-score move1) (move-score move2))
+      move1
+      move2))
+
+
+(define (eval-board board mark other-mark)
+  (if (check-win board mark)
+      10
+      (if (check-win board other-mark)
+          -10
+          0)))
+
+(define (minimax board depth isMaximizingPlayer mark other-mark)
+  (let ([score (eval-board board mark other-mark)])
+    (if (= score 10)
+        score
+        (if (= score -10)
+            score
+            (if (check-full board)
+                0
+                (if isMaximizingPlayer
+                    (let ([bestVal -1000])
+                      (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (begin
+                                                                              (let ([new-board (mark-board board (cord i j) mark)])
+                                                                                (max bstVal (minimax new-board (+ depth 1) (not isMaximizingPlayer) mark other-mark)))))
+                                                         bestValue (list 0 1 2))) bestVal (list 0 1 2)))
+                    (let ([bestVal 1000])
+                        (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (begin
+                                                                                (let ([new-board (mark-board board (cord i j) other-mark)])
+                                                                                    (min bstVal (minimax new-board (+ depth 1) (not isMaximizingPlayer) mark other-mark)))))
+                                                             bestValue (list 0 1 2))) bestVal (list 0 1 2)))))))))
+                      
+                          
+
 
 (define (start-two-player-game)
   (begin
