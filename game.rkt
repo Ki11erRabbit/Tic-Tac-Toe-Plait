@@ -79,7 +79,7 @@
       #t
       #f))
 
-
+;generates a Coord from an S-Expression
 (define (parse [s : S-Exp]) : Coord
   (let ([lst (s-exp->list s)])
     (let ([x (s-exp->number (first lst))])
@@ -90,6 +90,7 @@
               (parse (read)))
             (cord x y))))))
 
+;gets a Coord from the user in the form of an S-Expression and validates it
 (define (gen-cord moves) : Coord
   (let ([move (parse (read))])
     (if (member move moves)
@@ -179,12 +180,14 @@
 (define-type Move
   (move [coord : Coord] [score : Number]))
 
+;The max function for Move types
 (define (move-max [move1 : Move] [move2 : Move]) : Move
   (if (> (move-score move1) (move-score move2))
       move1
       move2))
 
-
+;Checks to see if the board is optimal for the current player
+;10 for a win, -10 for a loss, 0 for a draw
 (define (eval-board [board : Board] [mark : Char] [other-mark : Char]) : Number
   (if (check-win board mark)
       10
@@ -192,8 +195,13 @@
           -10
           0)))
 
-
-; The nasty nested folds are to emulate a nested for loop
+;board: the current board which is a list of list of characters
+;moves: a list of coordinates that have been played
+;depth: the current depth of the minimax algorithm
+;isMaximizingPlayer: a boolean that determines if the current player is the maximizing player
+;mark: the mark of the current player
+;other-mark: the mark of the other player
+;The nasty nested folds are to emulate a nested for loop
 (define (minimax [board : Board] [moves : (Listof Coord)] [depth : Number] [isMaximizingPlayer : Boolean] [mark : Char] [other-mark : Char])
   (let ([score (eval-board board mark other-mark)])
     (if (= score 10)
@@ -232,5 +240,7 @@
     (display "Player X, enter your move as a pair of numbers like this (0 0): \n")
     (play-turn (draw-board (create-board)) empty #\x #\o #t)))
 
+;Driver function for playing with two AIs
+;really boring since the the first ai will always make the same first move
 (define (zero-player-game)
   (play-ai-turn (draw-board (create-board)) empty #\x #\o #f))
