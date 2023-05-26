@@ -1,10 +1,6 @@
 #lang plait
 
 
-;Because PLAIT is unable to infer the type of a list when an empty list is created with empty, this function
-;creates an empty list by creating a list with one element and then dropping that element.
-(define (empty-list a)
-  (drop 1 (build-list 1 (lambda (x) a))))
 
 (define (take [n : Number] [lst : (Listof 'a)]) : (Listof 'a)
   (if (> n 0)
@@ -37,20 +33,21 @@
 (define-type Coord
   (cord [x : Number] [y : Number]))
 
+(define-type-alias Board (Listof (Listof Char)))
 
-;I would define the type Board to be a list of list of characters
-;but plait doesn't like nested lists as a type 
-(define (draw-board board)
+;This is needlessly complicated because I designed drawboard to be
+;insertable anywhere in code
+(define (draw-board [board : Board]) : Board
   (map2 (lambda (row vd) row) board (map print-row board)))
 
 (define (print-row [row : (Listof Char)])
   (map display row))
 
 
-(define (create-board)
+(define (create-board) : Board
   (list (list #\. #\. #\. #\newline) (list #\. #\. #\. #\newline) (list #\. #\. #\. #\newline)))
 
-(define (mark-board board coord mark)
+(define (mark-board [board : Board] [coord : Coord] [mark : Char]) : Board
     (let ([row (cord-x coord)]
             [col (cord-y coord)])
         (let ([new-row (take col (list-ref board row) )])
@@ -61,24 +58,26 @@
                 (let ([new-board (append new-board (drop (+ row 1) board))])
                   new-board))))))))
 
-(define (check-full board)
+(define (check-full [board : Board]) : Boolean
   (not (member #\. (flatten board))))
 
-(define (check-win board mark)
+;While expensive to create new lists, this is the
+;easiest way to check for a win
+(define (check-win [board : Board] [mark : Char]) : Boolean
     (or (check-win-row board mark)
         (check-win-row (rotate-grid-90 board) mark)
         (check-win-row (align-diagonals board) mark)))
 
-(define (check-win-row board mark)
+(define (check-win-row [board : Board] [mark : Char]) : Boolean
   (member #t (map (lambda (row) (check-win-row-helper row mark)) board)))
 
-(define (check-win-row-helper row mark) : Boolean
+(define (check-win-row-helper [row : (Listof Char)] [mark : Char]) : Boolean
   (if (= (foldl (lambda (x y) 
-                                 (if (char=? mark x)
-                                  (+ 1 y)
-                                  y)) 0 row) 3)
-          #t
-          #f))
+                  (if (char=? mark x)
+                      (+ 1 y)
+                      y)) 0 row) 3)
+      #t
+      #f))
 
 
 (define (parse [s : S-Exp]) : Coord
@@ -99,8 +98,12 @@
           (gen-cord moves))
         move)))
 
-
-(define (play-turn board moves mark other-mark ai)
+;board: the current board which is a list of list of characters
+;moves: a list of coordinates that have been played
+;mark: the mark of the current player
+;other-mark: the mark of the other player
+;ai: a boolean that determines if there is an ai or not
+(define (play-turn [board : Board] [moves : (Listof Coord)] [mark : Char] [other-mark : Char] [ai : Boolean])
   ;(let ([temp (draw-board board)])
   (let ([coord (gen-cord moves)])
     (let ([moves (append moves (list coord))])
@@ -126,11 +129,16 @@
                 (display "\n")
                 (draw-board new-board)
                 (if ai
-                    (play-ai-turn new-board moves other-mark mark)
-                    (play-turn new-board moves other-mark mark ai)))))))))
+                    (play-ai-turn new-board moves other-mark mark #t)
+                    (play-turn new-board moves other-mark mark #t)))))))))
 
 
-(define (play-ai-turn board moves mark other-mark)
+;board: the current board which is a list of list of characters
+;moves: a list of coordinates that have been played
+;mark: the mark of the current player
+;other-mark: the mark of the other player
+;player: a boolean that determines if there is a human player or not
+(define (play-ai-turn [board : Board] [moves : (Listof Coord)] [mark : Char] [other-mark : Char] [player : Boolean])
   (let ([coord (ai-move moves board mark other-mark)])
     (let ([moves (append moves (list coord))])
     (let ([new-board (mark-board board coord mark)])
@@ -154,14 +162,17 @@
                 (display "Next turn:")
                 (display "\n")
                 (draw-board new-board)
-                (play-turn new-board moves other-mark mark #t))))))))
+                (if player
+                    (play-turn new-board moves other-mark mark #t)
+                    (play-ai-turn new-board moves other-mark mark #f)))))))))
 
-(define (ai-move moves board mark other-mark) : Coord
+(define (ai-move [moves : (Listof Coord)] [board : Board] [mark : Char] [other-mark : Char]) : Coord
   (let ([bestVal (move (cord -1 -1) -1000)])
-      (move-coord (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (if (char=? (list-ref (list-ref board i) j) #\.)
-                                                                 (let ([new-board (mark-board board (cord i j) mark)])
-                                                                   (move-max bstVal (move (cord i j) (minimax new-board 0 #f mark other-mark))))
-                                                                 bstVal)) bestValue (list 0 1 2))) bestVal (list 0 1 2)))))
+    (move-coord (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (if (member (cord i j) moves)
+                                                                           bstVal
+                                                                           (let ([new-board (mark-board board (cord i j) mark)])
+                                                                             (move-max bstVal (move (cord i j) (minimax new-board (append moves (list (cord i j))) 0 #f mark other-mark)))))
+                                                      ) bestValue (list 0 1 2))) bestVal (list 0 1 2)))))
 
   
 
@@ -174,14 +185,16 @@
       move2))
 
 
-(define (eval-board board mark other-mark)
+(define (eval-board [board : Board] [mark : Char] [other-mark : Char]) : Number
   (if (check-win board mark)
       10
       (if (check-win board other-mark)
           -10
           0)))
 
-(define (minimax board depth isMaximizingPlayer mark other-mark)
+
+; The nasty nested folds are to emulate a nested for loop
+(define (minimax [board : Board] [moves : (Listof Coord)] [depth : Number] [isMaximizingPlayer : Boolean] [mark : Char] [other-mark : Char])
   (let ([score (eval-board board mark other-mark)])
     (if (= score 10)
         score
@@ -192,24 +205,32 @@
                 (if isMaximizingPlayer
                     (let ([bestVal -1000])
                       (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (begin
-                                                                              (let ([new-board (mark-board board (cord i j) mark)])
-                                                                                (max bstVal (minimax new-board (+ depth 1) (not isMaximizingPlayer) mark other-mark)))))
-                                                         bestValue (list 0 1 2))) bestVal (list 0 1 2)))
+                                                                               (if (member (cord i j) moves)
+                                                                                   bstVal
+                                                                                   (let ([new-board (mark-board board (cord i j) mark)])
+                                                                                     (max bstVal (minimax new-board (append moves (list (cord i j))) (+ depth 1) (not isMaximizingPlayer) mark other-mark))))))
+                                                            bestValue (list 0 1 2))) bestVal (list 0 1 2)))
                     (let ([bestVal 1000])
-                        (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (begin
-                                                                                (let ([new-board (mark-board board (cord i j) other-mark)])
-                                                                                    (min bstVal (minimax new-board (+ depth 1) (not isMaximizingPlayer) mark other-mark)))))
-                                                             bestValue (list 0 1 2))) bestVal (list 0 1 2)))))))))
+                      (foldl (lambda (i bestValue) (foldl (lambda (j bstVal) (begin
+                                                                               (if (member (cord i j) moves)
+                                                                                   bstVal
+                                                                                   (let ([new-board (mark-board board (cord i j) other-mark)])
+                                                                                     (min bstVal (minimax new-board (append moves (list (cord i j))) (+ depth 1) (not isMaximizingPlayer) mark other-mark))))))
+                                                          bestValue (list 0 1 2))) bestVal (list 0 1 2)))))))))
                       
                           
 
-
+;Driver function for playing the game with two players
 (define (start-two-player-game)
   (begin
-    (display "Player X, enter your move as a pair of numbers like this (0 0): ")
-    (play-turn (draw-board (create-board)) (empty-list (cord 0 0)) #\x #\o #f)))
+    (display "Player X, enter your move as a pair of numbers like this (0 0): \n")
+    (play-turn (draw-board (create-board)) empty #\x #\o #f)))
 
+;Driver function for playing the game with one AI
 (define (start-one-player-game)
   (begin
-    (display "Player X, enter your move as a pair of numbers like this (0 0): ")
-    (play-turn (draw-board (create-board)) (empty-list (cord 0 0)) #\x #\o #t)))
+    (display "Player X, enter your move as a pair of numbers like this (0 0): \n")
+    (play-turn (draw-board (create-board)) empty #\x #\o #t)))
+
+(define (zero-player-game)
+  (play-ai-turn (draw-board (create-board)) empty #\x #\o #f))
